@@ -1,0 +1,163 @@
+"""GitHub Actions workflow for CI/CD."""
+
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install black ruff pytest
+        pip install torch torch-geometric --index-url https://download.pytorch.org/whl/cpu
+    
+    - name: Run black
+      run: black --check src/ scripts/ tests/ demo/
+    
+    - name: Run ruff
+      run: ruff check src/ scripts/ tests/ demo/
+    
+    - name: Check imports
+      run: |
+        python -c "import src.models.mpnn; import src.models.baselines; import src.data.molecular_dataset; import src.train.trainer; import src.eval.evaluator; import src.utils.device"
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.11']
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install torch torch-geometric --index-url https://download.pytorch.org/whl/cpu
+    
+    - name: Run tests
+      run: |
+        pytest tests/ -v --tb=short
+    
+    - name: Test model creation
+      run: |
+        python -c "
+        from src.models.mpnn import MPNN
+        from src.models.baselines import GCN, GraphSAGE, GAT
+        from src.data.molecular_dataset import generate_synthetic_molecular_data
+        
+        # Generate test data
+        data = generate_synthetic_molecular_data(num_samples=5, seed=42)
+        
+        # Test model creation
+        models = {
+            'MPNN': MPNN(9, 3, 64),
+            'GCN': GCN(9, 64),
+            'GraphSAGE': GraphSAGE(9, 64),
+            'GAT': GAT(9, 64),
+        }
+        
+        # Test forward pass
+        for name, model in models.items():
+            output = model(data[0])
+            assert output.shape == (1,), f'{name} failed'
+            print(f'{name}: OK')
+        "
+
+  build:
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    
+    - name: Install build dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install build twine
+    
+    - name: Build package
+      run: python -m build
+    
+    - name: Check package
+      run: twine check dist/*
+    
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: dist
+        path: dist/
+
+  demo-test:
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install torch torch-geometric --index-url https://download.pytorch.org/whl/cpu
+    
+    - name: Test demo imports
+      run: |
+        python -c "
+        import streamlit as st
+        import plotly.express as px
+        import plotly.graph_objects as go
+        from src.models.mpnn import MPNN
+        from src.models.baselines import GCN, GraphSAGE, GAT
+        from src.data.molecular_dataset import generate_synthetic_molecular_data
+        print('Demo imports successful')
+        "
+    
+    - name: Test demo functionality
+      run: |
+        python -c "
+        from demo.app import create_model, visualize_molecular_graph
+        from src.data.molecular_dataset import generate_synthetic_molecular_data
+        
+        # Test model creation
+        model = create_model('MPNN', 9, 3, 64)
+        print('Model creation: OK')
+        
+        # Test data generation
+        data = generate_synthetic_molecular_data(num_samples=1, seed=42)
+        print('Data generation: OK')
+        
+        # Test visualization
+        fig = visualize_molecular_graph(data[0], 'Test')
+        print('Visualization: OK')
+        "

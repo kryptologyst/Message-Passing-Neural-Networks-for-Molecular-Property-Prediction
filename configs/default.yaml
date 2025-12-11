@@ -1,0 +1,50 @@
+# Configuration file for MPNN molecular property prediction
+
+# Model configuration
+model:
+  name: "mpnn"  # mpnn, gcn, graphsage, gat
+  hidden_dim: 64
+  num_layers: 3
+  dropout: 0.1
+  aggregation: "mean"  # mean, sum, max
+  activation: "relu"  # relu, gelu, tanh
+  use_gru: true
+  pooling: "set2set"  # set2set, mean, max
+  processing_steps: 3
+
+# Training configuration
+training:
+  batch_size: 32
+  num_epochs: 100
+  learning_rate: 0.001
+  weight_decay: 0.0
+  optimizer: "adam"  # adam, adamw
+  scheduler: "plateau"  # plateau, cosine
+  loss_fn: "mae"  # mae, mse, huber
+  early_stopping_patience: 10
+
+# Data configuration
+data:
+  dataset_name: "qm9"
+  target_property: 0
+  max_samples: 1000
+  num_workers: 4
+  shuffle_train: true
+
+# Evaluation configuration
+evaluation:
+  metrics: ["mae", "rmse", "r2", "mape"]
+  save_predictions: true
+  plot_results: true
+
+# Logging configuration
+logging:
+  use_wandb: false
+  project_name: "mpnn-molecular-prediction"
+  save_dir: "checkpoints"
+  log_interval: 10
+
+# Device configuration
+device:
+  seed: 42
+  deterministic: true
